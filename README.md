@@ -3,7 +3,7 @@
 Two-dimensional outer-totalistic ("life-like") cellular automata, run in the
 browser and measured.
 
-**→ https://arosso17.github.io/ca-lab/**
+**→ https://arosso17.github.io/celllifelab/**
 
 A rule gives each cell two rules of thumb: how many live neighbours bring a
 dead cell to life, and how many keep a live one alive. Conway's Life is
