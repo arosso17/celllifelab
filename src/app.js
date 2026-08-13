@@ -794,13 +794,19 @@ function renderTable() {
   updateBackfillButton();
   const nCols = shownColumns().length;
   const s = store.stats();
+  /* Where the records came from matters when there is a choice about it. In a
+     published build there is none, and saying so only repeats the count. */
   const where = s.mode === "disk"
-    ? `disk · ${s.lines} lines`
-    : s.mode === "published" ? `published dataset · ${s.records} rules`
-    : s.mode === "localStorage" ? "browser storage (no server)" : "session only";
+    ? ` · disk · ${s.lines} lines`
+    : s.mode === "localStorage" ? " · browser storage (no server)"
+    : s.mode === "published" ? "" : " · session only";
+  /* The table builds at most PAGE rows, so "shown" has to mean what is on
+     screen — reporting the whole matching set as shown and then noting a cap
+     said both at once and neither clearly. */
+  const shown = Math.min(rows.length, PAGE);
+  const count = shown === rows.length ? `${shown} shown` : `${shown} of ${rows.length} shown`;
   $("#count").textContent =
-    `${store.size} measured · ${rows.length} shown${rows.length > PAGE ? ` (first ${PAGE})` : ""}` +
-    ` · ${nCols}/${COLUMNS.length} columns · ${where}`;
+    `${store.size} measured · ${count} · ${nCols}/${COLUMNS.length} columns${where}`;
   drawPlot();
 }
 
@@ -1081,9 +1087,9 @@ addEventListener("pagehide", () => {
 });
 
 if (opened.mode === "published") {
-  setStatus(opened.error
-    ? `could not load ${opened.path}: ${opened.error}`
-    : `${store.size} rules from ${opened.path} · read-only`);
+  /* Only if something went wrong. A successful load has nothing to say that
+     the count line has not already said. */
+  if (opened.error) setStatus(`could not load ${opened.path}: ${opened.error}`);
 } else if (opened.mode === "disk") {
   setStatus(
     `records on disk: ${opened.path}` +
