@@ -1,0 +1,128 @@
+<!doctype html>
+<!-- The published build. Same engine, same features, same checks as the lab;
+     what is missing is everything that writes: measuring, sweeping, labelling,
+     notes, import, clear. `data-mode="readonly"` is what app.js reads to know
+     it should load a static dataset instead of looking for a server. -->
+<html lang="en" data-mode="readonly">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CA Lab — outer-totalistic rule space</title>
+<meta name="description" content="Every two-dimensional outer-totalistic cellular automaton rule, run in the browser and measured against a fixed set of probes.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">outer-totalistic rule space · 2<sup>18</sup> rules</span>
+  <h1>CA Lab</h1>
+  <p class="lede">Two-dimensional outer-totalistic (&ldquo;life-like&rdquo;) rules, run in the browser and measured
+  against a fixed set of probes. Type a rule, watch it, then find it in the table below and read what the
+  measurements say about it.</p>
+  <p class="lede small">Nothing here assigns a class. A rule is the set of answers its checks gave, nothing
+  more &mdash; the features are measurements, the checks are explicit tests over those measurements, and there is
+  no verdict on top.</p>
+</header>
+
+<section id="bench">
+  <h2>Bench</h2>
+  <div class="bench">
+    <div>
+      <div class="screen b0"><canvas id="sim"></canvas></div>
+      <div class="readout">
+        <span>rule <b id="r-rule">B3/S23</b></span>
+        <span>gen <b id="r-gen" class="num">0</b></span>
+        <span>density <b id="r-density" class="num">0.000</b></span>
+        <span>activity <b id="r-activity" class="num">0.000</b></span>
+        <span>λ <b id="r-lambda" class="num">0.273</b></span>
+      </div>
+      <p class="known" id="known" hidden></p>
+      <p class="known note" id="rule-note" hidden></p>
+    </div>
+
+    <div class="panel">
+      <div class="btnrow">
+        <button id="b-play" aria-pressed="true">Pause</button>
+        <button id="b-step">Step</button>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span>generations / sec</span><em id="l-speed">30</em></div>
+        <input type="range" id="s-speed" min="1" max="120" value="30" aria-label="Generations per second">
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span>rule</span></div>
+        <input type="text" id="t-rule" value="B3/S23" spellcheck="false" aria-label="Rule in B/S notation">
+        <div id="ruletable"></div>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span>boundary</span></div>
+        <div class="btnrow" id="boundary"></div>
+        <p class="hint" id="boundary-note"></p>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span>soup density</span><em id="l-soup">0.28</em></div>
+        <input type="range" id="s-soup" min="0.01" max="0.99" step="0.01" value="0.28"
+               aria-label="Density of a random soup">
+        <p class="hint">Applies to Soup, Blob and <b>R</b>. The measurement probes keep their own fixed
+        densities, so the bench and the table will not always agree &mdash; the bench is free, the
+        measurements are not.</p>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span>seed</span></div>
+        <div class="btnrow" id="seeds"></div>
+      </div>
+
+      <div class="field">
+        <p class="hint">Click the grid to paint cells. <b>space</b> play/pause, <b>n</b> step,
+        <b>r</b> re-soup, <b>c</b> clear, <b>i</b> invert.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="records">
+  <h2>Measurements</h2>
+  <p class="lede small">Records store feature values only. Check results are derived on read, so a change to
+  the checks re-answers every question about every rule already measured &mdash; nothing re-simulates. Click a
+  rule to load it on the bench.</p>
+
+  <div class="bar">
+    <input type="text" id="table-filter" placeholder="filter by rule or name" spellcheck="false" aria-label="Filter">
+    <select id="filter-add" aria-label="Add a filter on a check"><option value="">add filter…</option></select>
+    <span class="spacer"></span>
+    <button id="b-columns" aria-expanded="false">Columns</button>
+    <button id="b-export">Export</button>
+  </div>
+  <div class="colmenu" id="col-menu" hidden></div>
+  <div class="chips" id="filter-chips"></div>
+  <div class="readout"><span id="count"></span><span id="status"></span></div>
+
+  <div class="plotwrap">
+    <div class="bar">
+      <label class="inline">x <select id="plot-x"></select></label>
+      <label class="inline">y <select id="plot-y"></select></label>
+      <label class="inline">highlight <select id="plot-c"><option value="">none</option></select></label>
+      <span class="spacer"></span>
+      <span class="hint" id="plot-note"></span>
+    </div>
+    <canvas id="plot" width="1100" height="520"></canvas>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr id="thead-row"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+</div>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

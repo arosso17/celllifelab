@@ -1,0 +1,14 @@
+{
+  "generated": "2026-08-13T03:37:57.559Z",
+  "records": 2285,
+  "parts": [
+    "records-000.jsonl"
+  ],
+  "partDetail": [
+    {
+      "name": "records-000.jsonl",
+      "records": 2285,
+      "bytes": 3402687
+    }
+  ]
+}
