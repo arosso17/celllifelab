@@ -128,7 +128,12 @@ details.colgroup[open]{display:flex; flex-direction:column; gap:3px}
 /* Sits directly above the table. The table shows one page; the plot shows
    every matching rule, so this has to say which slice is on screen. */
 .pager{display:flex; gap:8px; align-items:center; margin:0 0 8px}
-.pagelabel{font-family:var(--mono); font-size:11.5px; color:var(--ink-3)}
+/* Fixed width, not min-width: the label runs from "1–2 of 2" to
+   "261901–262144 of 262144 · page 874 of 874" once rule space is fully swept,
+   and a label that resizes drags the next button out from under the cursor
+   between clicks. 42ch covers the widest it can ever be. */
+.pagelabel{font-family:var(--mono); font-size:11.5px; color:var(--ink-3);
+  width:42ch; text-align:center}
 .pager button{padding:2px 10px; line-height:1.5}
 .pager button:disabled{opacity:.35; cursor:default}
 
