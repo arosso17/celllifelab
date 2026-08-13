@@ -553,7 +553,7 @@ function buildTableHead() {
     th.onclick = () => {
       if (sortKey === col.key) sortDir = -sortDir;
       else { sortKey = col.key; sortDir = col.key === "rule" || col.key === "name" ? 1 : -1; }
-      renderTable();
+      showFirstPage();
     };
     tr.append(th);
   }
@@ -687,7 +687,7 @@ function addFilter(id) {
   if (!id || filters.some(f => f.id === id)) return;
   filters.push({ id, mode: "hide" });
   renderFilters();
-  renderTable();
+  showFirstPage();
 }
 
 function renderFilters() {
@@ -705,14 +705,14 @@ function renderFilters() {
     toggle.onclick = () => {
       f.mode = f.mode === "hide" ? "only" : "hide";
       renderFilters();
-      renderTable();
+      showFirstPage();
     };
 
     const drop = el("button", { className: "chip-x", textContent: "×", ariaLabel: `Remove ${label} filter` });
     drop.onclick = () => {
       filters.splice(filters.indexOf(f), 1);
       renderFilters();
-      renderTable();
+      showFirstPage();
     };
 
     chip.append(toggle, el("span", { className: "chip-label", textContent: label }), drop);
@@ -778,17 +778,51 @@ function cellFor(rec, col) {
   return el("td", { className: `chk ${cellClass(v)}`, textContent: cellText(v) });
 }
 
+/* The plot draws every matching rule; the table builds a page of them. With a
+   cap and no way past it, the two disagreed about how much data there was —
+   a plot of thousands of points above a table that stopped at 300 and said so
+   in a parenthesis. Paging makes the rest reachable and the number honest. */
 const PAGE = 300;
+let page = 0;
+
+const pager = el("div", { className: "pager" });
+const pagePrev = el("button", { textContent: "‹", ariaLabel: "Previous page" });
+const pageNext = el("button", { textContent: "›", ariaLabel: "Next page" });
+const pageLabel = el("span", { className: "pagelabel" });
+pagePrev.onclick = () => { page--; renderTable(); };
+pageNext.onclick = () => { page++; renderTable(); };
+pager.append(pagePrev, pageLabel, pageNext);
+
+/* Anything that changes which rules match starts again at the first page.
+   Staying on page 9 of a filter that now matches two rules shows an empty
+   table and looks like a bug in the filter. */
+function showFirstPage() {
+  page = 0;
+  renderTable();
+}
+
 function renderTable() {
   const rows = filteredRecords();
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  page = Math.min(Math.max(page, 0), pages - 1);
+  const start = page * PAGE;
+  const shown = rows.slice(start, start + PAGE);
+
   const body = $("#tbody");
   body.innerHTML = "";
   const cols = shownColumns();
-  for (const rec of rows.slice(0, PAGE)) {
+  for (const rec of shown) {
     const tr = el("tr");
     for (const col of cols) tr.append(cellFor(rec, col));
     body.append(tr);
   }
+
+  pageLabel.textContent = rows.length
+    ? `${start + 1}–${start + shown.length} of ${rows.length}` +
+      (pages > 1 ? ` · page ${page + 1} of ${pages}` : "")
+    : "no rules match";
+  pagePrev.disabled = page === 0;
+  pageNext.disabled = page >= pages - 1;
   rebuildCriterionMenus();
   syncLabelUI();
   updateBackfillButton();
@@ -800,13 +834,9 @@ function renderTable() {
     ? ` · disk · ${s.lines} lines`
     : s.mode === "localStorage" ? " · browser storage (no server)"
     : s.mode === "published" ? "" : " · session only";
-  /* The table builds at most PAGE rows, so "shown" has to mean what is on
-     screen — reporting the whole matching set as shown and then noting a cap
-     said both at once and neither clearly. */
-  const shown = Math.min(rows.length, PAGE);
-  const count = shown === rows.length ? `${shown} shown` : `${shown} of ${rows.length} shown`;
+  /* How many are on screen is the pager's job, right above the table. */
   $("#count").textContent =
-    `${store.size} measured · ${count} · ${nCols}/${COLUMNS.length} columns${where}`;
+    `${store.size} measured · ${nCols}/${COLUMNS.length} columns${where}`;
   drawPlot();
 }
 
@@ -937,6 +967,11 @@ plot.onclick = ev => {
 function buildControls() {
   buildRuleTable();
 
+  /* Built here rather than written into the markup: there are two pages, and
+     a control created in code lands on both without either having to declare
+     an id for it. */
+  $(".tablewrap")?.before(pager);
+
   /* Derived from the registries, never written by hand — these counts have
      already drifted once when a probe was added. */
   const quickProbes = requiredProbes(SWEEP_FEATURES).length;
@@ -1009,7 +1044,7 @@ function buildControls() {
     soupDensity = +ev.target.value;
     $("#l-soup").textContent = soupDensity.toFixed(2);
   }, "oninput");
-  on("#table-filter", renderTable, "oninput");
+  on("#table-filter", showFirstPage, "oninput");
 
   on("#b-export", () => {
     const blob = new Blob([JSON.stringify(store.toJSON(), null, 2)], { type: "application/json" });
