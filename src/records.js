@@ -89,9 +89,50 @@ const disk = {
     }
   },
 
-  async load() {
+  /* Read the response as it arrives rather than as one string.
+     `await res.text()` on a store of a quarter of a million rules is a few
+     hundred megabytes in a single string, and `split("\n")` then makes a
+     second copy of all of it as an array of substrings before a single record
+     exists. Both fit in the numbers on paper and neither fits in a renderer:
+     this is what took the tab down with STATUS_BREAKPOINT. Streaming holds one
+     chunk and the parsed records, and nothing in between. */
+  async load(onProgress) {
     const res = await fetch("/api/records", { cache: "no-store" });
-    return parseJSONL(await res.text());
+    const total = Number(res.headers.get("content-length")) || 0;
+    if (!res.body?.getReader) return parseJSONL(await res.text());   // no streams; tests, old browsers
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    const map = new Map();
+    let rest = "", lines = 0, bad = 0, seen = 0;
+
+    const take = line => {
+      if (!line.trim()) return;
+      lines++;
+      try {
+        const rec = JSON.parse(line);
+        if (rec?.rule) map.set(rec.rule, rec);   // later wins, as in parseJSONL
+      } catch {
+        bad++;
+      }
+    };
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      seen += value.byteLength;
+      rest += decoder.decode(value, { stream: true });
+      let nl, from = 0;
+      while ((nl = rest.indexOf("\n", from)) !== -1) {
+        take(rest.slice(from, nl));
+        from = nl + 1;
+      }
+      rest = rest.slice(from);
+      onProgress?.(seen, total);
+    }
+    take(rest + decoder.decode());
+
+    return { records: [...map.values()], lines, bad };
   },
 
   async append(records) {
@@ -99,20 +140,41 @@ const disk = {
     const res = await fetch("/api/records", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(records)
+      body: JSON.stringify(records.map(stripDerived))
     });
     if (res.ok) this.lines = (await res.json()).lines;
   },
 
+  /* Fold duplicates on the server, which reads the file it already has.
+     Sending a snapshot instead means serialising the whole store in the page
+     first — the same few hundred megabytes in one string that loading used to
+     build, and the same crash. */
+  async compactInPlace() {
+    const res = await fetch("/api/compact", { method: "POST" });
+    if (res.ok) this.lines = (await res.json()).lines;
+  },
+
+  /* Rewrite from a snapshot. For emptying or replacing the store, where the
+     file must end up matching what the caller holds — folding in place would
+     keep every record the caller just dropped. */
   async compact(records) {
     const res = await fetch("/api/compact", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(records)
+      body: JSON.stringify(records.map(stripDerived))
     });
     if (res.ok) this.lines = (await res.json()).lines;
   }
 };
+
+/* What goes to disk. Check results are re-derived from checks.js on every
+   read, so a stored copy is never read — and it was 145 MB of a 682 MB
+   store here. */
+function stripDerived(rec) {
+  if (!rec?.checks) return rec;
+  const { checks, ...rest } = rec;
+  return rest;
+}
 
 export class RecordStore {
   constructor(load = true) {
@@ -219,7 +281,7 @@ export class RecordStore {
   /* Rewrite the file from what is in memory, dropping superseded lines. */
   async compact() {
     if (this.mode !== "disk") return null;
-    await disk.compact([...this.map.values()]);
+    await disk.compactInPlace();
     return disk.lines;
   }
 
@@ -455,7 +517,9 @@ export class RecordStore {
     this.map.clear();
     this.dirty.clear();
     if (this.mode === "published") { /* nothing to write back to */ }
-    else if (this.mode === "disk") this.compact();
+    /* A snapshot rewrite, not a fold: folding in place reads the file, and the
+       file still holds everything just cleared. */
+    else if (this.mode === "disk") disk.compact([...this.map.values()]);
     else this.saveLocal();
     this.emit();
   }

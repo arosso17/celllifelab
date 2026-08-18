@@ -255,13 +255,44 @@ on("#b-catalog", async () => {
   btn.disabled = false;
 });
 
+/* The rules a sweep at this depth still has something to learn from, shuffled.
+ *
+ * The sweep used to draw B and S uniformly from all 262,144 rules and measure
+ * whatever came up — sampling with replacement. That is fine while the store is
+ * empty and quadratically wasteful once it is not: at 73% coverage roughly
+ * three of four draws land on a rule already measured, and finishing the space
+ * that way costs N·H(N) ≈ 3.4M measurements against the ~70k outstanding. One
+ * run of it left 154,747 re-measurements — about seven hours — in the store.
+ *
+ * Depth is part of the question: a rule swept quick has not run the probes a
+ * full sweep needs, so it is still outstanding for a full sweep. Anything
+ * already covered is left alone; re-measuring on purpose is what Re-measure is
+ * for. */
+function sweepQueue(featureSet, r) {
+  const need = requiredProbes(featureSet);
+  const todo = [];
+  for (let B = 0; B < 512; B++) {
+    for (let S = 0; S < 512; S++) {
+      const rec = store.get(formatRule(B, S));
+      if (rec && need.every(p => rec.probesRun?.includes(p))) continue;
+      todo.push((B << 9) | S);
+    }
+  }
+  /* Fisher-Yates on the seeded rng: a sweep stopped early should still leave an
+     unbiased sample of the space rather than a corner of it. */
+  for (let i = todo.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [todo[i], todo[j]] = [todo[j], todo[i]];
+  }
+  return todo;
+}
+
 /* random sweep, time-sliced so the page stays responsive */
 let sweeping = false;
 on("#b-sweep", async () => {
   if (sweeping) { sweeping = false; return; }
   sweeping = true;
   $("#b-sweep").textContent = "Stop";
-  const n = +$("#sweep-n").value;
   /* Quick mode runs only the probes SWEEP_FEATURES needs. Checks depending on
      the others report n/a on those records rather than guessing — which is
      why the coverage column exists. */
@@ -269,13 +300,23 @@ on("#b-sweep", async () => {
   const featureSet = quick ? SWEEP_FEATURES : FEATURES;
   const profile = quick ? "fast" : "full";
   const r = rng((Math.random() * 1e9) | 0);
+
+  const queue = sweepQueue(featureSet, r);
+  const n = Math.min(+$("#sweep-n").value, queue.length);
+  if (!n) {
+    sweeping = false;
+    $("#b-sweep").textContent = "Sweep";
+    setStatus(`every rule is already measured at this depth (${store.size} of 262,144)`);
+    return;
+  }
+
   let done = 0;
   const t0 = performance.now();
   while (sweeping && done < n) {
     const budget = performance.now();
     while (sweeping && done < n && performance.now() - budget < 60) {
-      const B = Math.floor(r() * 512), S = Math.floor(r() * 512);
-      measureAndStore({ B, S }, profile, { source: "sweep" }, featureSet);
+      const packed = queue[done];
+      measureAndStore({ B: packed >> 9, S: packed & 511 }, profile, { source: "sweep" }, featureSet);
       done++;
     }
     /* Write as we go: a sweep of thousands should not hold every record in
@@ -284,14 +325,15 @@ on("#b-sweep", async () => {
     store.save();
     const per = (performance.now() - t0) / done;
     const left = Math.max(0, (n - done) * per / 1000);
-    setStatus(`swept ${done} / ${n} · ${per.toFixed(0)} ms each · ${left.toFixed(0)}s left`);
+    setStatus(`swept ${done} / ${n} new · ${per.toFixed(0)} ms each · ${left.toFixed(0)}s left`);
     await frame();
   }
   store.save();
   store.emit();
   sweeping = false;
   $("#b-sweep").textContent = "Sweep";
-  setStatus(`swept ${done} rules`);
+  const outstanding = queue.length - done;
+  setStatus(`swept ${done} new rules · ${outstanding} still unmeasured at this depth`);
 });
 
 /* Backfill: bring old records up to the current feature set by running only
